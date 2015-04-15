@@ -161,7 +161,7 @@ namespace CompareSvnRepositories
 			}
 			catch(Exception ex)
 			{
-				Tw.WriteLine("relUrl");
+				Tw.WriteLine(relUrl);
 				Tw.WriteLine("=>");
 				Tw.WriteLine(ex);
 			}
