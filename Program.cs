@@ -12,48 +12,49 @@ namespace CompareSvnRepositories
 	{
 		static readonly TextWriter Tw = new StreamWriter("bad-blames", false) { AutoFlush = true };
 
-		static string _newRepo;
-		static int _newRepoRevision;
+		static string _leftRepo;
+		static int _leftRepoRevision;
 
-		static string _oldRepo;
-		static int _oldRepoRevision;
+		static string _rightRepo;
+		static int _rightRepoRevision;
 
 		readonly static SvnClient SvnClient = new SvnClient();
 
 		static void Main(string[] args)
 		{
 			var branch = "";
+			List<string> paths = null;
 
 			for (var i = 0; i < args.Length; i++)
 			{
 				if(args[i] == "--left-repo")
 				{
-					_oldRepo = args[++i];
+					_leftRepo = args[++i].TrimEnd('/', '\\') + "/";
 					continue;
 				}
 
 				if (args[i] == "--right-repo")
 				{
-					_newRepo = args[++i];
+					_rightRepo = args[++i].TrimEnd('/', '\\') + "/";
 					continue;
 				}
 
 				if (args[i] == "--rev")
 				{
-					_newRepoRevision = Int32.Parse(args[++i]);
-					_oldRepoRevision = _newRepoRevision;
+					_rightRepoRevision = Int32.Parse(args[++i]);
+					_leftRepoRevision = _rightRepoRevision;
 					continue;
 				}
 
 				if (args[i] == "--left-rev")
 				{
-					_oldRepoRevision = Int32.Parse(args[++i]);
+					_leftRepoRevision = Int32.Parse(args[++i]);
 					continue;
 				}
 
 				if (args[i] == "--right-rev")
 				{
-					_newRepoRevision = Int32.Parse(args[++i]);
+					_rightRepoRevision = Int32.Parse(args[++i]);
 					continue;
 				}
 
@@ -62,25 +63,29 @@ namespace CompareSvnRepositories
 					branch = args[++i];
 					continue;
 				}
+
+				if (args[i] == "--paths")
+				{
+					paths = File.ReadLines(args[++i]).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+					continue;
+				}
 			}
 
-			CompareRepos(branch);
-		}
+			if (Directory.Exists("_compare"))
+				Directory.Delete("_compare", true);
 
-		static void CompareRepos(string branch, List<string> paths = null)
-		{
-			if (paths == null)
+			if(paths == null)
 			{
-				var files1 = GetBranchFiles(_newRepo, branch, _newRepoRevision); //.Skip(22000).ToList();
-				var files2 = GetBranchFiles(_oldRepo, branch, _oldRepoRevision); //.Skip(22000).ToList();
+				var files1 = GetBranchFiles(_rightRepo, branch, _rightRepoRevision);
+				var files2 = GetBranchFiles(_leftRepo, branch, _leftRepoRevision);
 
 				if (files1.Count != files2.Count)
-					throw new Exception("Count of files not consistent");
-				
+					throw new Exception(string.Format("Count of files inconsistent {0} != {1}", files1.Count, files2.Count));
+
 				for (var i = 0; i < files1.Count; i++)
 				{
 					if (files1[i] != files2[i])
-						throw new Exception("Not equal files: " + files1[i] + " " + files2[i]);
+						throw new Exception(string.Format("Not equal files: {0} != {1}", files1[i], files2[i]));
 				}
 
 				paths = files1;
@@ -126,8 +131,8 @@ namespace CompareSvnRepositories
 		{
 			try
 			{
-				var newBlames = GetBlame(_newRepo + relUrl, _newRepoRevision);
-				var oldBlames = GetBlame(_oldRepo + relUrl, _oldRepoRevision);
+				var newBlames = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
+				var oldBlames = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
 
 				if (newBlames.Count != oldBlames.Count)
 				{
@@ -173,8 +178,8 @@ namespace CompareSvnRepositories
 		{
 			try
 			{
-				var newBlame = GetBlame(_newRepo + relUrl, _newRepoRevision);
-				var oldBlame = GetBlame(_oldRepo + relUrl, _oldRepoRevision);
+				var newBlame = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
+				var oldBlame = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
 
 				var sbOld = new StringBuilder();
 				var sbNew = new StringBuilder();
@@ -194,8 +199,8 @@ namespace CompareSvnRepositories
 					}
 				}
 
-				SaveBlame("new", relUrl, sbNew.ToString());
-				SaveBlame("old", relUrl, sbOld.ToString());
+				SaveBlame("right", relUrl, sbNew.ToString());
+				SaveBlame("left", relUrl, sbOld.ToString());
 			}
 			catch (Exception ex)
 			{
