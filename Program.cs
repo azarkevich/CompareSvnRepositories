@@ -24,6 +24,7 @@ namespace CompareSvnRepositories
 		{
 			var branch = "";
 			List<string> paths = null;
+			string savePaths = null;
 
 			for (var i = 0; i < args.Length; i++)
 			{
@@ -69,10 +70,13 @@ namespace CompareSvnRepositories
 					paths = File.ReadLines(args[++i]).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
 					continue;
 				}
-			}
 
-			if (Directory.Exists("_compare"))
-				Directory.Delete("_compare", true);
+				if (args[i] == "--save-paths")
+				{
+					savePaths = args[++i];
+					continue;
+				}
+			}
 
 			if(paths == null)
 			{
@@ -90,6 +94,15 @@ namespace CompareSvnRepositories
 
 				paths = files1;
 			}
+
+			if (savePaths != null)
+			{
+				File.WriteAllLines(savePaths, paths);
+				return;
+			}
+
+			if (Directory.Exists("_compare"))
+				Directory.Delete("_compare", true);
 
 			for (var i = 0; i < paths.Count; i++)
 			{
@@ -131,36 +144,42 @@ namespace CompareSvnRepositories
 		{
 			try
 			{
-				var newBlames = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
-				var oldBlames = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
+				var leftBlames = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
+				var rightBlames = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
 
-				if (newBlames.Count != oldBlames.Count)
+				if (rightBlames.Count != leftBlames.Count)
 				{
 					Console.WriteLine("	Count of lines mismatch: {0}", relUrl);
 					return false;
 				}
 
-				for (var i = 0; i < oldBlames.Count; i++)
+				for (var i = 0; i < leftBlames.Count; i++)
 				{
-					var oldLine = oldBlames[i];
-					var newLine = newBlames[i];
+					var leftLine = leftBlames[i];
+					var rightLine = rightBlames[i];
 
-					if (oldLine.Line != newLine.Line)
+					if (leftLine.MergedRevision != rightLine.MergedRevision || leftLine.Revision != rightLine.Revision)
+					{
+						Console.WriteLine("	Revisions mismatch: {0}", relUrl);
+						return false;
+					}
+
+					if (leftLine.Line != rightLine.Line)
 					{
 						Console.WriteLine("	Lines mismatch: {0}", relUrl);
 						return false;
 					}
 
-					if (oldLine.LineNumber != newLine.LineNumber)
+					if (leftLine.LineNumber != rightLine.LineNumber)
 					{
 						Console.WriteLine("	Line numbers mismatch: {0}", relUrl);
 						return false;
 					}
 
-					if (oldLine.Author == newLine.Author)
+					if (leftLine.Author == rightLine.Author)
 						continue;
 
-					Console.WriteLine("	Authors mismatch: {0}: {1} != {2}", relUrl, oldLine.Author, newLine.Author);
+					Console.WriteLine("	Authors mismatch: {0}: {1} != {2}", relUrl, leftLine.Author, rightLine.Author);
 					return false;
 				}
 			}
@@ -178,29 +197,31 @@ namespace CompareSvnRepositories
 		{
 			try
 			{
-				var newBlame = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
-				var oldBlame = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
+				var leftBlame = GetBlame(_leftRepo + relUrl, _leftRepoRevision);
+				var rightBlame = GetBlame(_rightRepo + relUrl, _rightRepoRevision);
 
-				var sbOld = new StringBuilder();
-				var sbNew = new StringBuilder();
+				var sbLeft = new StringBuilder();
+				var sbRight = new StringBuilder();
 
-				for (var i = 0; i < Math.Max(newBlame.Count, oldBlame.Count); i++)
+				for (var i = 0; i < Math.Max(rightBlame.Count, leftBlame.Count); i++)
 				{
-					if (i < newBlame.Count)
+					if (i < rightBlame.Count)
 					{
-						sbNew.AppendFormat("{0,-20}: {1}", newBlame[i].Author, newBlame[i].Line);
-						sbNew.AppendLine();
+						var rev = rightBlame[i].MergedRevision != -1 ? rightBlame[i].MergedRevision : rightBlame[i].Revision;
+						sbRight.AppendFormat("{0,-10} {1,-20}: {2}", rev, rightBlame[i].Author, rightBlame[i].Line);
+						sbRight.AppendLine();
 					}
 
-					if (i < oldBlame.Count)
+					if (i < leftBlame.Count)
 					{
-						sbOld.AppendFormat("{0,-20}: {1}", oldBlame[i].Author, oldBlame[i].Line);
-						sbOld.AppendLine();
+						var rev = leftBlame[i].MergedRevision != -1 ? leftBlame[i].MergedRevision : leftBlame[i].Revision;
+						sbLeft.AppendFormat("{0,-10} {1,-20}: {2}", rev, leftBlame[i].Author, leftBlame[i].Line);
+						sbLeft.AppendLine();
 					}
 				}
 
-				SaveBlame("right", relUrl, sbNew.ToString());
-				SaveBlame("left", relUrl, sbOld.ToString());
+				SaveBlame("right", relUrl, sbRight.ToString());
+				SaveBlame("left", relUrl, sbLeft.ToString());
 			}
 			catch (Exception ex)
 			{
@@ -221,13 +242,14 @@ namespace CompareSvnRepositories
 			{
 				var blameArgs = new SvnBlameArgs {
 					RetrieveMergedRevisions = false,
+					End = new SvnRevision(revision),
 					IgnoreLineEndings = false,
 					IgnoreMimeType = false,
 					IgnoreSpacing = SvnIgnoreSpacing.None
 				};
 
 				Collection<SvnBlameEventArgs> blameEvents;
-				SvnClient.GetBlame(new SvnUriTarget(url, new SvnRevision(revision)), blameArgs, out blameEvents);
+				SvnClient.GetBlame(new SvnUriTarget(url, blameArgs.End), blameArgs, out blameEvents);
 
 				return blameEvents;
 			}
