@@ -20,8 +20,6 @@ namespace CompareSvnRepositories
 
 		static bool _compareRevNums = true;
 
-		readonly static SvnClient SvnClient = new SvnClient();
-
 		static void Main(string[] args)
 		{
 			var branch = "";
@@ -130,22 +128,25 @@ namespace CompareSvnRepositories
 
 		static List<string> GetBranchFiles(string repo, string branch, int revision)
 		{
-			// read files list
-			var args = new SvnListArgs {
-				Depth = SvnDepth.Infinity
-			};
+			using (var svnClient = new SvnClient())
+			{
+				// read files list
+				var args = new SvnListArgs {
+					Depth = SvnDepth.Infinity
+				};
 
-			Collection<SvnListEventArgs> list;
-			SvnClient.GetList(new SvnUriTarget(repo + branch, new SvnRevision(revision)), args, out list);
+				Collection<SvnListEventArgs> list;
+				svnClient.GetList(new SvnUriTarget(repo + branch, new SvnRevision(revision)), args, out list);
 
-			var files = list
-				.Where(li => li.Entry.NodeKind == SvnNodeKind.File)
-				.Select(li => li.Path)
-				.OrderBy(p => p)
-				.ToList()
-			;
+				var files = list
+					.Where(li => li.Entry.NodeKind == SvnNodeKind.File)
+					.Select(li => li.Path)
+					.OrderBy(p => p)
+					.ToList()
+				;
 
-			return files;
+				return files;
+			}
 		}
 
 		static bool CompareBlames(string relUrl)
@@ -251,18 +252,22 @@ namespace CompareSvnRepositories
 		{
 			try
 			{
-				var blameArgs = new SvnBlameArgs {
-					RetrieveMergedRevisions = false,
-					End = new SvnRevision(revision),
-					IgnoreLineEndings = false,
-					IgnoreMimeType = false,
-					IgnoreSpacing = SvnIgnoreSpacing.None
-				};
+				using (var svnClient = new SvnClient())
+				{
+					var blameArgs = new SvnBlameArgs
+					{
+						RetrieveMergedRevisions = false,
+						End = new SvnRevision(revision),
+						IgnoreLineEndings = false,
+						IgnoreMimeType = false,
+						IgnoreSpacing = SvnIgnoreSpacing.None
+					};
 
-				Collection<SvnBlameEventArgs> blameEvents;
-				SvnClient.GetBlame(new SvnUriTarget(url, blameArgs.End), blameArgs, out blameEvents);
+					Collection<SvnBlameEventArgs> blameEvents;
+					svnClient.GetBlame(new SvnUriTarget(url, blameArgs.End), blameArgs, out blameEvents);
 
-				return blameEvents;
+					return blameEvents;
+				}
 			}
 			catch (Exception ex)
 			{
