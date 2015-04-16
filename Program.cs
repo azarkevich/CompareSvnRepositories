@@ -10,13 +10,15 @@ namespace CompareSvnRepositories
 {
 	class Program
 	{
-		static readonly TextWriter Tw = new StreamWriter("bad-blames", false) { AutoFlush = true };
+		static readonly TextWriter Tw = new StreamWriter("bad-blames.txt", false) { AutoFlush = true };
 
 		static string _leftRepo;
 		static int _leftRepoRevision;
 
 		static string _rightRepo;
 		static int _rightRepoRevision;
+
+		static bool _compareRevNums = true;
 
 		readonly static SvnClient SvnClient = new SvnClient();
 
@@ -74,6 +76,12 @@ namespace CompareSvnRepositories
 				if (args[i] == "--save-paths")
 				{
 					savePaths = args[++i];
+					continue;
+				}
+
+				if (args[i] == "--without-compare-revnums")
+				{
+					_compareRevNums = false;
 					continue;
 				}
 			}
@@ -158,10 +166,13 @@ namespace CompareSvnRepositories
 					var leftLine = leftBlames[i];
 					var rightLine = rightBlames[i];
 
-					if (leftLine.MergedRevision != rightLine.MergedRevision || leftLine.Revision != rightLine.Revision)
+					if (_compareRevNums)
 					{
-						Console.WriteLine("	Revisions mismatch: {0}", relUrl);
-						return false;
+						if (leftLine.MergedRevision != rightLine.MergedRevision || leftLine.Revision != rightLine.Revision)
+						{
+							Console.WriteLine("	Revisions mismatch: {0}", relUrl);
+							return false;
+						}
 					}
 
 					if (leftLine.Line != rightLine.Line)
