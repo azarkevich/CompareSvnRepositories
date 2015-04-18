@@ -11,6 +11,7 @@ namespace CompareSvnRepositories
 	class Program
 	{
 		static readonly TextWriter Tw = new StreamWriter("bad-blames.txt", false) { AutoFlush = true };
+		static readonly TextWriter TwEnh = new StreamWriter("bad-blames-enh.txt", false) { AutoFlush = true };
 
 		static string _leftRepo;
 		static int _leftRepoRevision;
@@ -118,10 +119,12 @@ namespace CompareSvnRepositories
 
 				var fullRel = branch + "/" + path;
 
-				if (!CompareBlames(fullRel))
+				var errs = CompareBlames(fullRel);
+				if (errs != null)
 				{
 					SaveBlames(fullRel);
 					Tw.WriteLine("{0}", path);
+					TwEnh.WriteLine("{0}	{1}", errs, path);
 				}
 			}
 		}
@@ -149,7 +152,7 @@ namespace CompareSvnRepositories
 			}
 		}
 
-		static bool CompareBlames(string relUrl)
+		static string CompareBlames(string relUrl)
 		{
 			try
 			{
@@ -159,40 +162,41 @@ namespace CompareSvnRepositories
 				if (rightBlames.Count != leftBlames.Count)
 				{
 					Console.WriteLine("	Count of lines mismatch: {0}", relUrl);
-					return false;
+					return "LineCount";
 				}
+
+				var err = new List<string>();
 
 				for (var i = 0; i < leftBlames.Count; i++)
 				{
 					var leftLine = leftBlames[i];
 					var rightLine = rightBlames[i];
 
-					if (_compareRevNums)
+					if(_compareRevNums && (leftLine.MergedRevision != rightLine.MergedRevision || leftLine.Revision != rightLine.Revision))
 					{
-						if (leftLine.MergedRevision != rightLine.MergedRevision || leftLine.Revision != rightLine.Revision)
-						{
-							Console.WriteLine("	Revisions mismatch: {0}", relUrl);
-							return false;
-						}
+						Console.WriteLine("	Revisions mismatch: {0}", relUrl);
+						err.Add("Revs");
 					}
-
-					if (leftLine.Line != rightLine.Line)
+					if(leftLine.Line != rightLine.Line)
 					{
 						Console.WriteLine("	Lines mismatch: {0}", relUrl);
-						return false;
+						err.Add("Content");
 					}
-
+					if(leftLine.Author != rightLine.Author)
+					{
+						Console.WriteLine("	Authors mismatch: {0}: {1} != {2}", relUrl, leftLine.Author, rightLine.Author);
+						err.Add("Author");
+					}
 					if (leftLine.LineNumber != rightLine.LineNumber)
 					{
 						Console.WriteLine("	Line numbers mismatch: {0}", relUrl);
-						return false;
+						err.Add("LineNo");
 					}
 
-					if (leftLine.Author == rightLine.Author)
+					if(err.Count == 0)
 						continue;
 
-					Console.WriteLine("	Authors mismatch: {0}: {1} != {2}", relUrl, leftLine.Author, rightLine.Author);
-					return false;
+					return string.Join(",", err);
 				}
 			}
 			catch(Exception ex)
@@ -202,7 +206,7 @@ namespace CompareSvnRepositories
 				Tw.WriteLine(ex);
 			}
 
-			return true;
+			return null;
 		}
 
 		static void SaveBlames(string relUrl)
