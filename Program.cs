@@ -14,12 +14,14 @@ namespace CompareSvnRepositories
 		static readonly TextWriter TwEnh = new StreamWriter("bad-blames-enh.txt", false) { AutoFlush = true };
 
 		static string _leftRepo;
-		static int _leftRepoRevision;
+		static int _leftRepoRevision = -1;
 
 		static string _rightRepo;
-		static int _rightRepoRevision;
+		static int _rightRepoRevision = -1;
 
 		static bool _compareRevNums = true;
+
+		static int _badBlamesCount;
 
 		static void Main(string[] args)
 		{
@@ -85,10 +87,36 @@ namespace CompareSvnRepositories
 				}
 			}
 
+			if (_leftRepoRevision == -1 && _rightRepoRevision == -1)
+			{
+				using (var client = new SvnClient())
+				{
+					SvnInfoEventArgs leftInfo;
+					client.GetInfo(new SvnUriTarget(_rightRepo), out leftInfo);
+
+					SvnInfoEventArgs rightInfo;
+					client.GetInfo(new SvnUriTarget(_rightRepo), out rightInfo);
+
+					_rightRepoRevision = (int)Math.Min(leftInfo.Revision, rightInfo.Revision);
+					_leftRepoRevision = _rightRepoRevision;
+
+					Console.WriteLine("Revision detected: {0} from L: {1}, R: {2}", _leftRepoRevision, leftInfo.Revision, rightInfo.Revision);
+				}
+			}
+
+			if (_leftRepoRevision == -1)
+				_leftRepoRevision = _rightRepoRevision;
+
+			if (_rightRepoRevision == -1)
+				_rightRepoRevision = _leftRepoRevision;
+
 			if(paths == null)
 			{
-				var files1 = GetBranchFiles(_rightRepo, branch, _rightRepoRevision);
+				Console.WriteLine("Read left paths...");
 				var files2 = GetBranchFiles(_leftRepo, branch, _leftRepoRevision);
+
+				Console.WriteLine("Read right paths...");
+				var files1 = GetBranchFiles(_rightRepo, branch, _rightRepoRevision);
 
 				if (files1.Count != files2.Count)
 					throw new Exception(string.Format("Count of files inconsistent {0} != {1}", files1.Count, files2.Count));
@@ -105,7 +133,7 @@ namespace CompareSvnRepositories
 			if (savePaths != null)
 			{
 				File.WriteAllLines(savePaths, paths);
-				return;
+				Console.WriteLine("Paths saved to {0}", savePaths);
 			}
 
 			if (Directory.Exists("_compare"))
@@ -115,6 +143,8 @@ namespace CompareSvnRepositories
 			{
 				var path = paths[i];
 
+				if (_badBlamesCount > 0)
+					Console.Write("[ERRs: {0,4}]", _badBlamesCount);
 				Console.WriteLine("{0} / {1}: {2}", i, paths.Count, path);
 
 				var fullRel = branch + "/" + path;
@@ -122,6 +152,7 @@ namespace CompareSvnRepositories
 				var errs = CompareBlames(fullRel);
 				if (errs != null)
 				{
+					_badBlamesCount++;
 					SaveBlames(fullRel);
 					Tw.WriteLine("{0}", path);
 					TwEnh.WriteLine("{0}	{1}", errs, path);
